@@ -4,8 +4,8 @@
   "type": "module",
   "scripts": {
     "server": "bun run server/index.ts",
-    "client": "bun run client/index.ts",
-    "database": "bun run database/database-cli.ts"
+    "database": "bun run database/database-cli.ts",
+    "test": "bun run test/index.ts"
   },
   "devDependencies": {
     "bun-types": "latest"
