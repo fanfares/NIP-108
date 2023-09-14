@@ -86,7 +86,7 @@ export function changeNotePrice(db: Database, table: string, noteId: string, new
 
 // ------------------- PR ENTRIES ------------------------
 
-export function createPrEntry(db: Database, table: string, entry: Omit<PREntry, 'timestamp' | 'paymentStatus'>) {
+export function createPrEntry(db: Database, table: string, entry: Omit<PREntry, 'timestamp' | 'paymentStatus'> | PREntry) {
     const timestamp = Math.floor(Date.now() / 1000); // Current Unix timestamp
     const paymentStatus = "UNPAID";
 
