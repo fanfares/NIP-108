@@ -3,11 +3,9 @@ import cors from "cors";
 import bodyParser from "body-parser";
 import { checkPaid, getInvoice } from "./lightning";
 import { Database } from "bun:sqlite";
-import { createPrEntry, getNoteEntry, getPREntry, markPaid, setupNoteTable, setupPRTable } from "../database/database";
-
-// ------------------- LIGHTNING SETUP ----------------
-
-const LUD16 = Bun.env.LUD16 as string;
+import { createNoteEntry, createPrEntry, getNoteEntry, getPREntry, markPaid, setupNoteTable, setupPRTable } from "../database/database";
+import { CreateNotePostBody, verifyCreateNote } from "./nostr";
+import { Action, Status, serverLog } from "./utils";
 
 // ------------------- DATABASE SETUP ------------------
 
@@ -27,13 +25,38 @@ const DOMAIN = `${Bun.env.DOMAIN as string}:${PORT}`;
 APP.use(cors())
 APP.use(bodyParser.json())
 
+APP.post("/create", async (request, response) => {
+  try {
+    const postBody: CreateNotePostBody = request.body;
+
+    await verifyCreateNote(postBody, DOMAIN);
+
+    await createNoteEntry(
+      DB, 
+      NOTE_TABLE, 
+      postBody.kind42.id,
+      postBody.lud16, 
+      postBody.secret, 
+      postBody.cost
+    );
+
+    serverLog(Action.CREATE, Status.SUCCESS, `Created: ${postBody.kind42.id}`)
+    response.status(200).send({message: "Saved gated note!"});
+
+  } catch(e: any){
+    serverLog(Action.CREATE, Status.ERROR, `${e.toString()}`)
+    response.status(e.status ?? 500).send({error: e.toString()});
+  }
+});
+
 APP.get("/:noteId", async (request, response) => {
   try {
     const noteId = request.params.noteId;
+
     const noteEntry = getNoteEntry(DB, NOTE_TABLE, noteId);
 
     const invoice = await getInvoice(
-      LUD16,
+      noteEntry.lud16,
       DOMAIN,
       noteEntry.price,
       noteId,
@@ -44,9 +67,10 @@ APP.get("/:noteId", async (request, response) => {
       ...invoice,
     })
 
+    serverLog(Action.GET_INVOICE, Status.SUCCESS, `Send invoice: ${noteId}`)
     response.status(402).send(prEntry);
   } catch(e: any){
-    console.log(`ERROR: ${e.toString()}`)
+    serverLog(Action.GET_INVOICE, Status.ERROR, `${e.toString()}`)
     response.status(e.status ?? 500).send({error: e.toString()});
   }
 });
@@ -63,6 +87,7 @@ APP.get("/:noteId/:paymentHash", async (request, response) => {
     }
 
     if(prEntry.paymentStatus === "PAID"){
+      serverLog(Action.GET_RESULT, Status.SUCCESS, `Returned Secret: ${noteId}`)
       response.status(200).send(noteEntry)
       return;
     }
@@ -70,20 +95,22 @@ APP.get("/:noteId/:paymentHash", async (request, response) => {
     const verify = await checkPaid(prEntry.verify);
 
     if(!verify.settled){
+      serverLog(Action.GET_RESULT, Status.SUCCESS, `Not yet paid: ${noteId}`)
       response.status(402).send(prEntry);
       return;
     }
 
     markPaid(DB, PR_TABLE, paymentHash)
 
+    serverLog(Action.GET_RESULT, Status.SUCCESS, `Paid and returned secret: ${noteId}`)
     response.status(200).send(noteEntry);
   } catch(e: any){
-    console.log(`ERROR: ${e.toString()}`);
+    serverLog(Action.GET_RESULT, Status.ERROR, `${e.toString()}`)
     response.status(e.status ?? 500).send({error: e.toString()});
   }
 });
 
 APP.listen(PORT, () => {
-  console.log("Welcome to NIP-108: Lightning Gated Notes")
-  console.log(`Listening on port ${PORT}...`);
+  serverLog(Action.SERVER, Status.INFO, "Welcome to NIP-108: Lightning Gated Notes")
+  serverLog(Action.SERVER, Status.INFO, `Listening on port ${PORT}...`)
 });

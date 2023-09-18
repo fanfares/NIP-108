@@ -5,7 +5,7 @@
   "scripts": {
     "server": "bun run server/index.ts",
     "database": "bun run database/database-cli.ts",
-    "test": "bun run test/index.ts",
+    "dev": "bun run test/index.ts",
     "utils": "bun run server/utils.ts"
   },
   "devDependencies": {

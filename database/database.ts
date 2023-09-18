@@ -3,10 +3,11 @@ import { randomBytes } from "crypto";
 import { Invoice } from "../server/lightning";
 
 export interface NoteEntry {
-    noteId: string;     // Corresponds to the TEXT type in SQLite
-    price: number;      // Corresponds to the INTEGER type in SQLite
-    secret: string;     // Corresponds to the TEXT type in SQLite
-    timestamp: number;  // Corresponds to the INTEGER type in SQLite (representing Unix timestamp)
+    noteId: string;
+    lud16: string;
+    price: number;
+    secret: string;
+    timestamp: number;
 }
 
 export function setupNoteTable(db: Database, table: string){
@@ -14,6 +15,7 @@ export function setupNoteTable(db: Database, table: string){
     CREATE TABLE IF NOT EXISTS ${table} (
       noteId TEXT PRIMARY KEY,
       price INTEGER,
+      lud16 TEXT,
       secret TEXT,
       timestamp INTEGER
     );
@@ -48,16 +50,15 @@ export function setupPRTable(db: Database, table: string) {
 
 // ------------------- NOTE ENTRIES ------------------------
 
-export function createNoteEntry(db: Database, table: string, noteId: string, price: number) {
-    const secret = randomBytes(16).toString('hex');
+export function createNoteEntry(db: Database, table: string, noteId: string, lud16: string, secret: string, price: number) {
     const timestamp = Math.floor(Date.now()); // Current Unix timestamp
   
     const insertQuery = db.query(`
-      INSERT INTO ${table} (noteId, price, secret, timestamp)
-      VALUES ($noteId, $price, $secret, $timestamp);
+      INSERT INTO ${table} (noteId, price, lud16, secret, timestamp)
+      VALUES ($noteId, $price, $lud16, $secret, $timestamp);
     `);
   
-    insertQuery.run({ $noteId: noteId, $price: price, $secret: secret, $timestamp: timestamp });
+    insertQuery.run({ $noteId: noteId, $price: price, $lud16: lud16, $secret: secret, $timestamp: timestamp });
   };
 
 export function getNoteEntry(db: Database, table: string, noteId: string): NoteEntry {
@@ -85,7 +86,6 @@ export function changeNotePrice(db: Database, table: string, noteId: string, new
 }
 
 // ------------------- PR ENTRIES ------------------------
-
 export function createPrEntry(db: Database, table: string, entry: Omit<PREntry, 'timestamp' | 'paymentStatus'> | PREntry) {
     const timestamp = Math.floor(Date.now() / 1000); // Current Unix timestamp
     const paymentStatus = "UNPAID";

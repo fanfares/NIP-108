@@ -49,7 +49,13 @@ export interface PayerDataDetail {
 
 // ---------------------- HELPERS ---------------------------
 
-function getLud6Url(lud16: string) {
+export function isValidLud16(lud16: string){
+  // Regular expression to validate common email structures
+  const regex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/;
+  return regex.test(lud16);
+}
+
+export function getLud16Url(lud16: string) {
   const parts = lud16.split("@");
   if (parts.length !== 2) {
     throw new Error(`Invalid lud16: ${lud16}`);
@@ -92,7 +98,7 @@ export async function getInvoice(
   noteId: string,
   expiration?: Date
 ): Promise<Invoice> {
-  const lud6Url = getLud6Url(lud16);
+  const lud6Url = getLud16Url(lud16);
 
   try {
     const lud16Response = await fetch(lud6Url, {

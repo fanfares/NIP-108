@@ -12,8 +12,8 @@ setupPRTable(DB, PR_TABLE); // Setup the table immediately after its definition
 
 // ------------------------ ADD ENTRY -------------------------------------
 
-const addEntry = (noteId: string, price: number) => {
-  createNoteEntry(DB, NOTE_TABLE, noteId, price);
+const addEntry = (noteId: string, lud16: string, secret: string, price: number, ) => {
+  createNoteEntry(DB, NOTE_TABLE, noteId, lud16, secret, price);
 
   console.log(`Created new Note with noteId ${noteId} to ${price}`);
 };
@@ -130,19 +130,21 @@ const deleteAllEntries = () => {
 
 const args = process.argv.slice(2); // Slice off node path and script name
 
-switch (args[0].toLowerCase()) {
+switch (args[0]?.toLowerCase()) {
   case 'create'.toLowerCase():
-    if (args.length !== 3) {
-      console.error('Usage: create <noteId> <price>');
+    if (args.length !== 5) {
+      console.error('Usage: create <noteId> <lud16> <secret> <price>');
       process.exit(1);
     }
     const noteId = args[1];
-    const price = parseInt(args[2], 10);
+    const lud16 = args[2];
+    const secret = args[3];
+    const price = parseInt(args[4], 10);
     if (isNaN(price)) {
       console.error('Price must be a valid number.');
       process.exit(1);
     }
-    addEntry(noteId, price);
+    addEntry(noteId, lud16, secret, price);
     console.log(`Added entry with noteId ${noteId} and price ${price}`);
     break;
   case 'changePrice'.toLowerCase():
@@ -197,14 +199,14 @@ switch (args[0].toLowerCase()) {
   default:
     console.error(`Invalid command: ${args[0]}`);
     console.log('\nAvailable commands and their usage:\n');
-    console.log('  create <noteId> <price>      - Add a new entry with given noteId and price.');
-    console.log('  get <noteId>                 - Retrieve the details for the given noteId.');
-    console.log('  getAll                       - Fetch all entries from the database.');
-    console.log('  getpr <pr>                   - Retrieve the pr for the given noteId.');
-    console.log('  getAllPr                     - Fetch all pr entries from the database.');
-    console.log('  delete <noteId>              - Delete an entry with the given noteId.');
-    console.log('  deleteAll                    - Delete all entries from the database.');
-    console.log('  changePrice <noteId> <price> - Update the price for the given noteId.');
+    console.log('  create <noteId> <lud16> <secret> <price>   - Add a new entry with given noteId and price.');
+    console.log('  get <noteId>                               - Retrieve the details for the given noteId.');
+    console.log('  getAll                                     - Fetch all entries from the database.');
+    console.log('  getpr <pr>                                 - Retrieve the pr for the given noteId.');
+    console.log('  getAllPr                                   - Fetch all pr entries from the database.');
+    console.log('  delete <noteId>                            - Delete an entry with the given noteId.');
+    console.log('  deleteAll                                  - Delete all entries from the database.');
+    console.log('  changePrice <noteId> <price>               - Update the price for the given noteId.');
     console.log('\nExample:\n');
     console.log('  bun database create "example-note" 5000\n');
 }

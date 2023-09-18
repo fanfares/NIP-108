@@ -1,25 +1,39 @@
-import { generatePrivateKey } from 'nostr-tools';
-
-function generateNostrSK() {
-    console.log(generatePrivateKey());
+export enum Action {
+    SERVER = 'SERVER',
+    CREATE = 'CREATE',
+    GET_INVOICE = 'INVOICE',
+    GET_RESULT = 'RESULT'
 }
 
-function main() {
-    const command = process.argv[2];
-    switch(command) {
-        case 'sk':
-        case 'newsk':
-            generateNostrSK();
+export enum Status {
+    INFO = 'INFO',
+    ERROR = 'ERROR',
+    SUCCESS = 'SUCCESS'
+}
+
+export function serverLog(action: Action, status: Status, message: string) {
+    let color: string;
+
+    // ANSI escape codes for colors
+    const RESET = "\x1b[0m";
+    const RED = "\x1b[31m";
+    const GREEN = "\x1b[32m";
+    const BLUE = "\x1b[34m";
+
+    // Assign color based on status
+    switch (status) {
+        case Status.ERROR:
+            color = RED;
             break;
+        case Status.SUCCESS:
+            color = GREEN;
+            break;
+        case Status.INFO:
         default:
-            const usage = "Usage: bun utils <command>\n"
-                        + "\nCommands:"
-                        + "\n  newsk   Generate a Nostr private key.";
-        
-            console.log(usage);
+            color = BLUE;
             break;
-            
     }
-}
 
-main();
+    const formattedAction = (action + ':').padEnd(8, ' ');  // To ensure all actions are the same length for proper alignment
+    console.log(`${color}${formattedAction} ${message} ${RESET}`);
+}
