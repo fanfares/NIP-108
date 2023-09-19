@@ -1,11 +1,11 @@
 import express from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
-import { checkPaid, getInvoice } from "./lightning";
+import { checkPaid, getInvoice } from "server/lightning";
 import { Database } from "bun:sqlite";
-import { createNoteEntry, createPrEntry, getNoteEntry, getPREntry, markPaid, setupNoteTable, setupPRTable } from "../database/database";
-import { CreateNotePostBody, verifyCreateNote } from "./nostr";
-import { Action, Status, serverLog } from "./utils";
+import { createNoteEntry, createPrEntry, getNoteEntry, getPREntry, markPaid, setupNoteTable, setupPRTable } from "database";
+import { CreateNotePostBody, verifyCreateNote } from "server/nostr";
+import { Action, Status, serverLog } from "server/utils";
 
 // ------------------- DATABASE SETUP ------------------
 
@@ -19,8 +19,8 @@ setupPRTable(DB, PR_TABLE); // Setup the table immediately after its definition
 // -------------------- SERVER SETUP --------------------
 
 const APP = express();
-const PORT = Number(Bun.env.PORT);
-const DOMAIN = `${Bun.env.DOMAIN as string}:${PORT}`;
+const SERVER_PORT = Number(Bun.env.SERVER_PORT);
+const DOMAIN = `${Bun.env.DOMAIN as string}:${SERVER_PORT}`;
 
 APP.use(cors())
 APP.use(bodyParser.json())
@@ -110,7 +110,7 @@ APP.get("/:noteId/:paymentHash", async (request, response) => {
   }
 });
 
-APP.listen(PORT, () => {
+APP.listen(SERVER_PORT, () => {
   serverLog(Action.SERVER, Status.INFO, "Welcome to NIP-108: Lightning Gated Notes")
-  serverLog(Action.SERVER, Status.INFO, `Listening on port ${PORT}...`)
+  serverLog(Action.SERVER, Status.INFO, `Listening on port ${SERVER_PORT}...`)
 });

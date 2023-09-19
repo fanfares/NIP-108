@@ -1,10 +1,8 @@
 import {
-  generatePrivateKey,
   getPublicKey,
   finishEvent,
   VerifiedEvent,
 } from "nostr-tools";
-import fs from "fs";
 import { decrypt, encrypt, hashToKey } from "./crypto";
 import { getLud16Url, isValidLud16 } from "./lightning";
 
@@ -26,6 +24,11 @@ export interface KeyNote {
     note: VerifiedEvent<number>;
     iv: string,
     gate: string,
+}
+
+export interface AnnouncementNote {
+  note: VerifiedEvent<number>;
+  gate: string,
 }
 
 export function eventToGatedNote(event: VerifiedEvent<number>): GatedNote {
@@ -58,6 +61,19 @@ export function eventToKeyNote(event: VerifiedEvent<number>): KeyNote {
     };
 
     return keyNote;
+}
+
+export function eventToAnnouncementNote(event: VerifiedEvent<number>): AnnouncementNote {
+  // Extract tags
+  const gateTag = event.tags.find(tag => tag[0] === "g");
+
+  // Construct GatedNote
+  const announcementNote: AnnouncementNote = {
+      note: event,
+      gate: gateTag ? gateTag[1] : ""
+  };
+
+  return announcementNote;
 }
 
 export function createGatedNote(
@@ -108,6 +124,25 @@ export function createKeyNote(
   return finishEvent(event, privateKey);
 }
 
+export function createAnnouncementNote(
+  privateKey: string,
+  content: string,
+  gatedNote: VerifiedEvent<number>
+): VerifiedEvent<number> {
+
+  const event = {
+    kind: 1,
+    pubkey: getPublicKey(privateKey),
+    created_at: Math.floor(Date.now() / 1000),
+    tags: [
+      ["g", gatedNote.id],
+    ],
+    content: content,
+  };
+
+  return finishEvent(event, privateKey);
+}
+
 export function unlockGatedNote(
   gatedNote: VerifiedEvent<number>,
   secret: string
@@ -152,8 +187,6 @@ export function unlockGatedNoteFromKeyNote(
 
   // Decrypt the secret using the derived key and iv from the keyNote
   const decryptedSecret = decrypt(iv, encryptedSecretContent, keyNoteSecretKey);
-
-  console.log(decryptedSecret);
 
   // 2. Use the decrypted secret to decrypt the gatedNote
   return unlockGatedNote(gatedNote, decryptedSecret);

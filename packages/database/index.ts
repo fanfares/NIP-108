@@ -1,6 +1,5 @@
 import { Database } from "bun:sqlite";
-import { randomBytes } from "crypto";
-import { Invoice } from "../server/lightning";
+import { Invoice } from "server/lightning";
 
 export interface NoteEntry {
     noteId: string;

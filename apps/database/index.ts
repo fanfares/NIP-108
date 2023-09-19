@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { NoteEntry, PREntry, changeNotePrice, createNoteEntry, getNoteEntry, getPREntry, setupNoteTable, setupPRTable } from "./database";
+import { NoteEntry, PREntry, changeNotePrice, createNoteEntry, getNoteEntry, getPREntry, setupNoteTable, setupPRTable } from "database";
 
 // ------------------------ DATABASE SETUP -------------------------------
 

@@ -1,11 +1,12 @@
-import { VerifiedEvent, finishEvent, generatePrivateKey, getPublicKey } from "nostr-tools";
-import { PREntry } from "../database/database";
-import { CreateNotePostBody, createGatedNote, createKeyNote, eventToGatedNote, unlockGatedNoteFromKeyNote } from "../server/nostr";
+import { VerifiedEvent, finishEvent, generatePrivateKey, getPublicKey, relayInit } from "nostr-tools";
+import { CreateNotePostBody, createAnnouncementNote, createGatedNote, createKeyNote, eventToGatedNote, unlockGatedNoteFromKeyNote } from "server/nostr";
+import { PREntry } from "database";
 
-const PORT = Number(Bun.env.PORT);
-const SERVER = `${Bun.env.DOMAIN as string}:${PORT}`;
+const SERVER_PORT = Number(Bun.env.SERVER_PORT);
+const SERVER = `${Bun.env.DOMAIN as string}:${SERVER_PORT}`;
 const LNBITS_API = Bun.env.LNBITS_API as string
 const LUD16 = Bun.env.LUD16 as string
+const RELAY = Bun.env.NOSTR_RELAY as string
 
 // ------------- HELPERS ------------------
 
@@ -46,8 +47,6 @@ async function testCreateGatedNote(sk?: string){
     const secret = generatePrivateKey();
     const privateKey = sk ?? generatePrivateKey();
     const testNote = createTestNote(privateKey);
-
-    console.log("Secret: ", secret)
   
     const gatedNote = createGatedNote(
       privateKey,
@@ -75,6 +74,7 @@ async function testCreateGatedNote(sk?: string){
     return gatedNote;
 }
 
+
 async function testUnlockingGatedNote(gatedNote: VerifiedEvent<number>){
     const gatedNoteData = eventToGatedNote(gatedNote);
 
@@ -88,6 +88,18 @@ async function testUnlockingGatedNote(gatedNote: VerifiedEvent<number>){
     const getResultsResponseData = await getResultsResponse.json();
 
     return getResultsResponseData.secret;
+}
+
+async function postNotes(gatedNote: VerifiedEvent<number>, keyNote: VerifiedEvent<number>, announcementNote: VerifiedEvent<number>,){
+    const relay = relayInit(RELAY);
+
+    await relay.connect();
+
+    await relay.publish(gatedNote)
+    await relay.publish(keyNote)
+    await relay.publish(announcementNote)
+
+    await relay.close();
 }
 
 async function runTests(){
@@ -105,8 +117,13 @@ async function runTests(){
     console.log("Unlocking from key note...");
     const unlockedNote = unlockGatedNoteFromKeyNote(nostrSK, keyNote, gatedNote)
 
-    console.log("Result: ");
-    console.log(unlockedNote.content);
+    console.log("Creating announcement note...");
+    const announcementNote = createAnnouncementNote(nostrSK, "Pay for my note!", gatedNote)
+
+    console.log("Posting Notes...");
+    await postNotes(gatedNote, keyNote, announcementNote);
+
+    console.log("Result: " + unlockedNote.content);
 }
 
 runTests();

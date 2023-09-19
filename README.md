@@ -12,8 +12,13 @@ Run the server:
 bun server
 ```
 
-Run the test:
+Run the client:
 ```bash
-bun dev
+bun client
+```
+
+Create a gated note:
+```bash
+bun createNote
 ```
 
