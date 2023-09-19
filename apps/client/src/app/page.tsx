@@ -2,11 +2,13 @@
 
 import { Relay, relayInit, Event as NostrEvent, VerifiedEvent } from "nostr-tools"
 import { useEffect, useState } from "react"
-import { AnnouncementNote, eventToAnnouncementNote } from "server";
+import { AnnouncementNote, GatedNote, KeyNote, eventToAnnouncementNote, eventToGatedNote } from "server";
 
 export default function Home() {
   const [relay, setRelay] = useState<Relay | null>(null)
   const [events, setEvents] = useState<AnnouncementNote[]>([])
+  const [gatedNotes, setGatedNotes] = useState<GatedNote[]>([])
+  const [keyNotes, setKeyNotes] = useState<KeyNote[]>([])
 
   useEffect(()=>{
     const newRelay = relayInit(process.env.NEXT_PUBLIC_NOSTR_RELAY as string)
@@ -29,10 +31,18 @@ export default function Home() {
         }
       ])
 
-      sub.on('event', (data)=>{ 
+      sub.on('event', (note)=>{ 
         
-        if(data.tags.find(tag => tag[0] === "g")){
-          const announcement = eventToAnnouncementNote(data as VerifiedEvent);
+        if(note.tags.find(tag => tag[0] === "g")){
+          const announcement = eventToAnnouncementNote(note as VerifiedEvent);
+
+          relay.get({
+            ids: [announcement.gate],
+          }).then((gatedNote)=>{
+            if(gatedNote)
+              setGatedNotes([...gatedNotes, eventToGatedNote(gatedNote as VerifiedEvent)])
+          })
+
           setEvents([...events, announcement]);
           console.log(announcement);
         }
