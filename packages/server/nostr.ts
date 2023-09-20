@@ -24,6 +24,7 @@ export interface KeyNote {
     note: VerifiedEvent<number>;
     iv: string,
     gate: string,
+    unlockedSecret: string,
 }
 
 export interface AnnouncementNote {
