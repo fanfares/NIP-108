@@ -5,9 +5,8 @@ import {
   relayInit,
   Event as NostrEvent,
   VerifiedEvent,
-  getPublicKey
 } from "nostr-tools";
-import { useEffect, useState } from "react";
+import { Key, useEffect, useState } from "react";
 import { WebLNProvider, requestProvider } from "webln";
 import {
   AnnouncementNote,
@@ -24,12 +23,12 @@ export default function Home() {
 
   // ------------------- STATES -------------------------
 
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [gateLoading, setGateLoading] = useState<string | null>();
   const [relay, setRelay] = useState<Relay | null>(null);
   const [nostr, setNostr] = useState<any | null>(null);
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [webln, setWebln] = useState<null | WebLNProvider>(null);
-  const [events, setEvents] = useState<AnnouncementNote[]>([]);
+  const [announcementNotes, setAnnouncementNotes] = useState<AnnouncementNote[]>([]);
   const [gatedNotes, setGatedNotes] = useState<GatedNote[]>([]);
   const [keyNotes, setKeyNotes] = useState<KeyNote[]>([]);
 
@@ -66,83 +65,87 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (relay) {
-      const gatedSub = relay.sub([
+    if (relay && nostr && publicKey) {
+
+
+      // const since = Math.round(Date.now() / 1000) - (5 * 60 * 60);
+      relay.list([
         {
           kinds: [1],
           limit: 3,
+          // since,
         },
-      ]);
-
-      gatedSub.on("event", (note) => {
-        if (note.tags.find((tag) => tag[0] === "g")) {
-          const announcement = eventToAnnouncementNote(note as VerifiedEvent);
-
-          relay
-            .get({
-              ids: [announcement.gate],
-            })
-            .then((gatedNote) => {
-              if (gatedNote)
-                setGatedNotes([
-                  ...gatedNotes,
-                  eventToGatedNote(gatedNote as VerifiedEvent),
-                ]);
-            });
-
-          setEvents([...events, announcement]);
-        }
-      });
-
-      return () => {
-        gatedSub.unsub();
-      };
-    }
-  }, [relay]);
-
-  useEffect(() => {
-    if (relay && nostr && publicKey) {
-      const keySub = relay.sub([
         {
           kinds: [43],
-          authors: [publicKey],
-        },
-      ]);
+          limit: 3,
+          authors: [publicKey as string],
+          // since,
+        }
+      ]).then((notes) => {
+        const newAnnouncementNotes: AnnouncementNote[] = [];
+        const newKeyNotes: KeyNote[] = [];
 
-      keySub.on("event", (keyNote) => {
+        for (const note of notes) {
+          if(note.kind === 1 && note.tags.find((tag) => tag[0] === "g")){
+              newAnnouncementNotes.push(eventToAnnouncementNote(note as VerifiedEvent));
+          } else if(note.kind === 43){
+            newKeyNotes.push(eventToKeyNote(note as VerifiedEvent));
+          }
+        }
 
-        const keyNoteVerified = eventToKeyNote(keyNote as VerifiedEvent);
-        const gatedNote = gatedNotes.find((gatedNote) => gatedNote.note.id === keyNoteVerified.gate);
+        setAnnouncementNotes(newAnnouncementNotes);
+        setKeyNotes(newKeyNotes);
 
-        if(!gatedNote) return;
-
-        nostr.nip04.decrypt(gatedNote.note.pubkey, keyNote.content).then((unlockedSecret: string) => {
-
-          console.log(unlockedSecret);
-
-          const keyNoteUnlocked = {
-            ...keyNoteVerified,
-            unlockedSecret,
-          } as KeyNote;
-          setKeyNotes([...keyNotes, keyNoteUnlocked]);
+        relay.list([{
+          ids: [
+            ...newAnnouncementNotes.map((announcementNote) => announcementNote.gate), 
+            ...newKeyNotes.map((keyNote) => keyNote.gate)
+          ],
+        }]).then((gatedEvents)=>{
+          console.log(gatedEvents)
+          setGatedNotes(gatedEvents.map((gatedNote)=>eventToGatedNote(gatedNote as VerifiedEvent)));
         })
 
       });
 
-      return () => {
-        keySub.unsub();
-      };
     }
   }, [relay, nostr, publicKey]);
 
+  useEffect(() => {
+    if(gatedNotes.length > 0){
+      unlockAll();
+    }
+  }, [gatedNotes]);
+
   // ------------------- FUNCTIONS -------------------------
 
+  const unlockAll = async() => {
+    const newKeyNotes: KeyNote [] = [];
+    for (const keyNote of keyNotes) {
+
+      const gatedNote = gatedNotes.find((gatedNote) => gatedNote.note.id === keyNote.gate);
+
+      if(!gatedNote){
+        newKeyNotes.push(keyNote);
+        continue;
+      }
+
+      const unlockedSecret = await nostr.nip04.decrypt(gatedNote.note.pubkey, keyNote.note.content);
+
+      newKeyNotes.push({
+        ...keyNote,
+        unlockedSecret,
+      });
+    }
+
+    setKeyNotes(newKeyNotes)
+  }
 
   const handleBuy = async (gatedNote: GatedNote) => {
 
-    if(isLoading) return;
+    if(gateLoading) return;
 
-    setIsLoading(true);
+    setGateLoading(gatedNote.note.id);
 
     try {
 
@@ -159,9 +162,9 @@ export default function Home() {
 
       const resultResponse = await fetch(invoiceResponseJson.successAction.url);
       const resultResponseJson = await resultResponse.json();
-      console.log(resultResponseJson)
+      const secret = resultResponseJson.secret;
       
-      const content = await nostr.nip04.encrypt(gatedNote.note.pubkey, resultResponseJson.secret);
+      const content = await nostr.nip04.encrypt(gatedNote.note.pubkey, secret);
 
       const keyEvent = {
         kind: 43,
@@ -177,13 +180,17 @@ export default function Home() {
 
       await relay.publish(keyEventVerified);
 
-      setKeyNotes([...keyNotes, eventToKeyNote(keyEventVerified as VerifiedEvent)]);
+      const keyNoteUnlocked = {
+        ...eventToKeyNote(keyEventVerified),
+        unlockedSecret: secret,
+      } as KeyNote;
+      setKeyNotes([...keyNotes, keyNoteUnlocked]);
 
     } catch(e){
       alert(e)
     }
 
-    setIsLoading(false);
+    setGateLoading(null);
   };
 
   const formatGatedContent = (content: string) => {
@@ -194,11 +201,11 @@ export default function Home() {
 
   const renderUnlockedContent = (gatedNote: GatedNote, keyNote: KeyNote) => {
 
-    const unlockedNote = unlockGatedNote(gatedNote.note, keyNote.unlockedSecret);
+    const unlockedNote = unlockGatedNote(gatedNote.note, keyNote.unlockedSecret as string);
 
     return (
       <div className="mt-5">
-        <p>{unlockedNote.content}</p>
+        <p>🔓 {unlockedNote.content}</p>
       </div>
     );
   }
@@ -214,9 +221,17 @@ export default function Home() {
             onClick={() => {
               handleBuy(gatedNote);
             }}
-            className="px-3 py-2 border border-r-4 border-white rounded-full text-white hover:bg-white hover:text-black hover:border-black"
+            className={`px-3 py-2 border border-r-4 border-white rounded-full text-white hover:bg-white hover:text-black hover:border-black`}
           >
-            {(gatedNote.cost / 1000).toFixed(0)} ⚡🔓
+            {
+              gateLoading && gatedNote.note.id === gateLoading ? 
+              (
+                'Unlocking...'
+              ) : 
+              (
+                `${(gatedNote.cost / 1000).toFixed(0)} ⚡🔓`
+              )
+            }
           </button>
         </div>
       </div>
@@ -228,7 +243,7 @@ export default function Home() {
       (gatedNote) => gatedNote.note.id === event.gate
     );
     const keyNote = keyNotes.find(
-      (keyNote) => keyNote.gate === event.gate
+      (keyNote) => keyNote.gate === event.gate && keyNote.unlockedSecret
     );
 
     if (!gatedNote) return null;
@@ -241,7 +256,7 @@ export default function Home() {
   const renderEvents = () => {
     return (
       <div className="w-full mt-4">
-        {events.map((event, index) => {
+        {announcementNotes.map((event, index) => {
           return (
             <div
               key={index}

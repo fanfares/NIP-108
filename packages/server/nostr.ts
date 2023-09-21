@@ -2,6 +2,7 @@ import {
   getPublicKey,
   finishEvent,
   VerifiedEvent,
+  nip04
 } from "nostr-tools";
 import { decrypt, encrypt, hashToKey } from "./crypto";
 import { getLud16Url, isValidLud16 } from "./lightning";
@@ -24,7 +25,7 @@ export interface KeyNote {
     note: VerifiedEvent<number>;
     iv: string,
     gate: string,
-    unlockedSecret: string,
+    unlockedSecret?: string,
 }
 
 export interface AnnouncementNote {
@@ -103,23 +104,21 @@ export function createGatedNote(
   return finishEvent(event, privateKey);
 }
 
-export function createKeyNote(
+export async function createKeyNote(
   privateKey: string,
   secret: string,
   gatedNote: VerifiedEvent<number>
-): VerifiedEvent<number> {
-  const noteSecretKey = hashToKey(privateKey);
-  const encryptedSecret = encrypt(secret, noteSecretKey);
+): Promise<VerifiedEvent<number>> {
+  const encryptedSecret = await nip04.encrypt(privateKey, gatedNote.pubkey, secret);
 
   const event = {
     kind: 43,
     pubkey: getPublicKey(privateKey),
     created_at: Math.floor(Date.now() / 1000),
     tags: [
-      ["iv", encryptedSecret.iv],
       ["g", gatedNote.id],
     ],
-    content: encryptedSecret.content,
+    content: encryptedSecret,
   };
 
   return finishEvent(event, privateKey);
@@ -168,26 +167,13 @@ export function unlockGatedNote(
   return JSON.parse(decryptedContent) as VerifiedEvent<number>;
 }
 
-export function unlockGatedNoteFromKeyNote(
+export async function unlockGatedNoteFromKeyNote(
   privateKey: string,
   keyNote: VerifiedEvent<number>,
   gatedNote: VerifiedEvent<number>
-): VerifiedEvent<number> {
-  // 1. Derive the encryption key from the private key
-  const keyNoteSecretKey = hashToKey(privateKey);
-
-  // Extract the iv and encrypted secret content from the keyNote
-  const ivTag = keyNote.tags?.find((tag) => tag[0] === "iv");
-  const encryptedSecretContent = keyNote.content;
-
-  if (!ivTag) {
-    throw new Error("IV not found in the keyNote tags");
-  }
-
-  const iv = ivTag[1];
-
-  // Decrypt the secret using the derived key and iv from the keyNote
-  const decryptedSecret = decrypt(iv, encryptedSecretContent, keyNoteSecretKey);
+): Promise<VerifiedEvent<number>> {
+  // 1. Decrypt key using nip04
+  const decryptedSecret = await nip04.decrypt(privateKey, gatedNote.pubkey, keyNote.content);
 
   // 2. Use the decrypted secret to decrypt the gatedNote
   return unlockGatedNote(gatedNote, decryptedSecret);

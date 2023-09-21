@@ -1,27 +1,28 @@
 import { VerifiedEvent, finishEvent, generatePrivateKey, getPublicKey, relayInit } from "nostr-tools";
 import { CreateNotePostBody, createAnnouncementNote, createGatedNote, createKeyNote, eventToGatedNote, unlockGatedNoteFromKeyNote } from "server/nostr";
 import { PREntry } from "database";
+import storyData from './story.json';
 
 const SERVER_PORT = Number(Bun.env.SERVER_PORT);
 const SERVER = `${Bun.env.DOMAIN as string}:${SERVER_PORT}`;
 const LNBITS_API = Bun.env.LNBITS_API as string
 const LUD16 = Bun.env.LUD16 as string
 const RELAY = Bun.env.NOSTR_RELAY as string
+const NOSTR_SK = Bun.env.NOSTR_SK ?? generatePrivateKey();
 
 // ------------- HELPERS ------------------
 
-function createTestNote(privateKey?: string, content?: string) {
-    const sk = privateKey ?? generatePrivateKey();
+function createLockedEvent(privateKey: string, content: string) {
   
     const event = {
       kind: 1,
-      pubkey: getPublicKey(sk),
+      pubkey: getPublicKey(privateKey),
       created_at: Math.floor(Date.now() / 1000),
       tags: [],
-      content: content ?? "Hello world.",
+      content: content,
     };
   
-    return finishEvent(event, sk);
+    return finishEvent(event, privateKey);
   }
 
   async function payInvoice (pr: string) {
@@ -38,29 +39,29 @@ function createTestNote(privateKey?: string, content?: string) {
     });
 }
 
-// ------------- TESTS ------------------
-
-async function testCreateGatedNote(sk?: string){
-    const cost = 5000;
-    const lud16 = LUD16;
-    const endpoint = SERVER;
+async function createGatedEvent(
+    privateKey: string, 
+    content: string,
+    lud16: string,
+    endpoint: string,
+    cost: number,
+){
     const secret = generatePrivateKey();
-    const privateKey = sk ?? generatePrivateKey();
-    const testNote = createTestNote(privateKey);
+    const lockedNote = createLockedEvent(privateKey, content);
   
     const gatedNote = createGatedNote(
       privateKey,
       secret,
       cost,
       endpoint,
-      testNote
+      lockedNote
     );
 
     const postBody: CreateNotePostBody = {
         kind42: gatedNote,
         lud16: lud16,
         secret: secret,
-        cost: cost
+        cost: cost,
     }
 
     const response = await fetch(endpoint + '/create', {
@@ -75,7 +76,7 @@ async function testCreateGatedNote(sk?: string){
 }
 
 
-async function testUnlockingGatedNote(gatedNote: VerifiedEvent<number>){
+async function testUnlockGatedNote(gatedNote: VerifiedEvent<number>){
     const gatedNoteData = eventToGatedNote(gatedNote);
 
     const invoiceResponse = await fetch(gatedNoteData.endpoint + '/' + gatedNoteData.note.id);
@@ -90,7 +91,7 @@ async function testUnlockingGatedNote(gatedNote: VerifiedEvent<number>){
     return getResultsResponseData.secret;
 }
 
-async function postNotes(gatedNote: VerifiedEvent<number>, keyNote: VerifiedEvent<number>, announcementNote: VerifiedEvent<number>,){
+async function postToNostr(gatedNote: VerifiedEvent<number>, keyNote: VerifiedEvent<number>, announcementNote: VerifiedEvent<number>,){
     const relay = relayInit(RELAY);
 
     await relay.connect();
@@ -102,28 +103,40 @@ async function postNotes(gatedNote: VerifiedEvent<number>, keyNote: VerifiedEven
     await relay.close();
 }
 
-async function runTests(){
-    const nostrSK = generatePrivateKey()
+async function postStories(){
 
-    console.log("Creating gated note...")
-    const gatedNote = await testCreateGatedNote(nostrSK);
+    let x = 1;
+    for (const storyEntry of storyData.stories) {
+        console.log(`Creating ${x++}/${storyData.stories.length} stories`);
 
-    console.log("Paying for gated note...")
-    const secret = await testUnlockingGatedNote(gatedNote);
+        console.log("Creating gated note...")
+        const gatedNote = await createGatedEvent(
+            NOSTR_SK, 
+            storyEntry.story, 
+            LUD16,
+            SERVER,
+            storyEntry.cost
+        );
+    
+        console.log("Paying for gated note...")
+        const secret = await testUnlockGatedNote(gatedNote);
+    
+        console.log("Creating key note...");
+        const keyNote = await createKeyNote(NOSTR_SK, secret, gatedNote);
+    
+        console.log("Unlocking from key note...");
+        const unlockedNote = await unlockGatedNoteFromKeyNote(NOSTR_SK, keyNote, gatedNote)
+    
+        console.log("Creating announcement note...");
+        const announcementNote = createAnnouncementNote(NOSTR_SK, storyEntry.preview, gatedNote)
+    
+        console.log("Posting Notes...");
+        await postToNostr(gatedNote, keyNote, announcementNote);
+    
+        console.log("Result: " + unlockedNote.content);
+    }
 
-    console.log("Creating key note...");
-    const keyNote = createKeyNote(nostrSK, secret, gatedNote);
-
-    console.log("Unlocking from key note...");
-    const unlockedNote = unlockGatedNoteFromKeyNote(nostrSK, keyNote, gatedNote)
-
-    console.log("Creating announcement note...");
-    const announcementNote = createAnnouncementNote(nostrSK, "Pay for my note!", gatedNote)
-
-    console.log("Posting Notes...");
-    await postNotes(gatedNote, keyNote, announcementNote);
-
-    console.log("Result: " + unlockedNote.content);
+    console.log(`Done.`);
 }
 
-runTests();
+postStories();
