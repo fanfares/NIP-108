@@ -25,7 +25,6 @@ import { PREntry } from "database";
 const SERVER_PORT = Number(process.env.NEXT_PUBLIC_SERVER_PORT);
 const SERVER = `${process.env.NEXT_PUBLIC_DOMAIN as string}:${SERVER_PORT}`;
 
-
 interface FormData {
   lud16: string,
   cost?: number,
