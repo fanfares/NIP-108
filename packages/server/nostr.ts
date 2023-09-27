@@ -2,7 +2,9 @@ import {
   getPublicKey,
   finishEvent,
   VerifiedEvent,
-  nip04
+  nip04,
+  generatePrivateKey,
+  EventTemplate
 } from "nostr-tools";
 import { decrypt, encrypt, hashToKey } from "./crypto";
 import { getLud16Url, isValidLud16 } from "./lightning";
@@ -78,20 +80,20 @@ export function eventToAnnouncementNote(event: VerifiedEvent<number>): Announcem
   return announcementNote;
 }
 
-export function createGatedNote(
-  privateKey: string,
+export function createGatedNoteUnsigned(
+  publicKey: string,
   secret: string,
   cost: number,
   endpoint: string,
-  payload: VerifiedEvent<number>
-): VerifiedEvent<number> {
+  payload: VerifiedEvent<number>,
+): EventTemplate<number> {
   const noteToEncrypt = JSON.stringify(payload);
   const noteSecretKey = hashToKey(secret);
   const encryptedNote = encrypt(noteToEncrypt, noteSecretKey);
 
   const event = {
     kind: 42,
-    pubkey: getPublicKey(privateKey),
+    pubkey: publicKey,
     created_at: Math.floor(Date.now() / 1000),
     tags: [
       ["iv", encryptedNote.iv],
@@ -101,7 +103,45 @@ export function createGatedNote(
     content: encryptedNote.content,
   };
 
+  return event;
+}
+
+export function createGatedNote(
+  privateKey: string,
+  secret: string,
+  cost: number,
+  endpoint: string,
+  payload: VerifiedEvent<number>
+): VerifiedEvent<number> {
+
+  const event = createGatedNoteUnsigned(
+    getPublicKey(privateKey),
+    secret,
+    cost,
+    endpoint,
+    payload,
+  )
+
   return finishEvent(event, privateKey);
+}
+
+export function createKeyNoteUnsigned(
+  publicKey: string,
+  encryptedSecret: string,
+  gatedNote: VerifiedEvent<number>
+  ): EventTemplate<number> {
+
+  const event = {
+    kind: 43,
+    pubkey: publicKey,
+    created_at: Math.floor(Date.now() / 1000),
+    tags: [
+      ["g", gatedNote.id],
+    ],
+    content: encryptedSecret,
+  };
+
+  return event;
 }
 
 export async function createKeyNote(
@@ -111,17 +151,28 @@ export async function createKeyNote(
 ): Promise<VerifiedEvent<number>> {
   const encryptedSecret = await nip04.encrypt(privateKey, gatedNote.pubkey, secret);
 
+  const event = createKeyNoteUnsigned(getPublicKey(privateKey), encryptedSecret, gatedNote)
+
+  return finishEvent(event, privateKey);
+}
+
+export function createAnnouncementNoteUnsigned(
+  publicKey: string,
+  content: string,
+  gatedNote: VerifiedEvent<number>
+): EventTemplate<number> {
+
   const event = {
-    kind: 43,
-    pubkey: getPublicKey(privateKey),
+    kind: 1,
+    pubkey: publicKey,
     created_at: Math.floor(Date.now() / 1000),
     tags: [
       ["g", gatedNote.id],
     ],
-    content: encryptedSecret,
+    content: content,
   };
 
-  return finishEvent(event, privateKey);
+  return event;
 }
 
 export function createAnnouncementNote(
@@ -130,15 +181,7 @@ export function createAnnouncementNote(
   gatedNote: VerifiedEvent<number>
 ): VerifiedEvent<number> {
 
-  const event = {
-    kind: 1,
-    pubkey: getPublicKey(privateKey),
-    created_at: Math.floor(Date.now() / 1000),
-    tags: [
-      ["g", gatedNote.id],
-    ],
-    content: content,
-  };
+  const event = createAnnouncementNoteUnsigned(getPublicKey(privateKey), content, gatedNote)
 
   return finishEvent(event, privateKey);
 }

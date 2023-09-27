@@ -3,15 +3,18 @@
 import {
   Relay,
   relayInit,
-  Event as NostrEvent,
   VerifiedEvent,
+  generatePrivateKey,
 } from "nostr-tools";
-import { Key, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { WebLNProvider, requestProvider } from "webln";
 import {
   AnnouncementNote,
+  CreateNotePostBody,
   GatedNote,
   KeyNote,
+  createAnnouncementNoteUnsigned,
+  createGatedNoteUnsigned,
   eventToAnnouncementNote,
   eventToGatedNote,
   eventToKeyNote,
@@ -19,8 +22,26 @@ import {
 } from "server";
 import { PREntry } from "database";
 
-export default function Home() {
+const SERVER_PORT = Number(process.env.NEXT_PUBLIC_SERVER_PORT);
+const SERVER = `${process.env.NEXT_PUBLIC_DOMAIN as string}:${SERVER_PORT}`;
 
+
+interface FormData {
+  lud16: string,
+  cost?: number,
+  preview: string,
+  content: string,
+}
+const DEFAULT_FORM_DATA: FormData = {
+  lud16: "coachchuckff@getalby.com",
+  cost: 1,
+  preview: "Hey unlock my post for 1 sat!",
+  content: "This is the content that will be unlocked!",
+}
+
+
+
+export default function Home() {
   // ------------------- STATES -------------------------
 
   const [gateLoading, setGateLoading] = useState<string | null>();
@@ -28,9 +49,15 @@ export default function Home() {
   const [nostr, setNostr] = useState<any | null>(null);
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [webln, setWebln] = useState<null | WebLNProvider>(null);
-  const [announcementNotes, setAnnouncementNotes] = useState<AnnouncementNote[]>([]);
+  const [announcementNotes, setAnnouncementNotes] = useState<
+    AnnouncementNote[]
+  >([]);
   const [gatedNotes, setGatedNotes] = useState<GatedNote[]>([]);
   const [keyNotes, setKeyNotes] = useState<KeyNote[]>([]);
+
+  const [submittingForm, setSubmittingForm] = useState<boolean>(false);
+  const [isPostFormOpen, setPostFormOpen] = useState<boolean>(false);
+  const [formData, setFormData] = useState<FormData>(DEFAULT_FORM_DATA);
 
   // ------------------- EFFECTS -------------------------
 
@@ -38,7 +65,7 @@ export default function Home() {
     requestProvider()
       .then(setWebln)
       .catch((e) => {
-        alert("Please download Alby or ZBD to use this app.")
+        alert("Please download Alby or ZBD to use this app.");
       });
   }, []);
 
@@ -49,7 +76,6 @@ export default function Home() {
     } else {
       alert("Nostr not found");
     }
-
   }, []);
 
   useEffect(() => {
@@ -66,71 +92,85 @@ export default function Home() {
 
   useEffect(() => {
     if (relay && nostr && publicKey) {
-
-
       // const since = Math.round(Date.now() / 1000) - (5 * 60 * 60);
-      relay.list([
-        {
-          kinds: [1],
-          limit: 3,
-          // since,
-        },
-        {
-          kinds: [43],
-          limit: 3,
-          authors: [publicKey as string],
-          // since,
-        }
-      ]).then((notes) => {
-        const newAnnouncementNotes: AnnouncementNote[] = [];
-        const newKeyNotes: KeyNote[] = [];
+      relay
+        .list([
+          {
+            kinds: [1],
+            limit: 3,
+            // since,
+          },
+          {
+            kinds: [43],
+            limit: 3,
+            authors: [publicKey as string],
+            // since,
+          },
+        ])
+        .then((notes) => {
+          const newAnnouncementNotes: AnnouncementNote[] = [];
+          const newKeyNotes: KeyNote[] = [];
 
-        for (const note of notes) {
-          if(note.kind === 1 && note.tags.find((tag) => tag[0] === "g")){
-              newAnnouncementNotes.push(eventToAnnouncementNote(note as VerifiedEvent));
-          } else if(note.kind === 43){
-            newKeyNotes.push(eventToKeyNote(note as VerifiedEvent));
+          for (const note of notes) {
+            if (note.kind === 1 && note.tags.find((tag) => tag[0] === "g")) {
+              newAnnouncementNotes.push(
+                eventToAnnouncementNote(note as VerifiedEvent)
+              );
+            } else if (note.kind === 43) {
+              newKeyNotes.push(eventToKeyNote(note as VerifiedEvent));
+            }
           }
-        }
 
-        setAnnouncementNotes(newAnnouncementNotes);
-        setKeyNotes(newKeyNotes);
+          setAnnouncementNotes(newAnnouncementNotes);
+          setKeyNotes(newKeyNotes);
 
-        relay.list([{
-          ids: [
-            ...newAnnouncementNotes.map((announcementNote) => announcementNote.gate), 
-            ...newKeyNotes.map((keyNote) => keyNote.gate)
-          ],
-        }]).then((gatedEvents)=>{
-          console.log(gatedEvents)
-          setGatedNotes(gatedEvents.map((gatedNote)=>eventToGatedNote(gatedNote as VerifiedEvent)));
-        })
-
-      });
-
+          relay
+            .list([
+              {
+                ids: [
+                  ...newAnnouncementNotes.map(
+                    (announcementNote) => announcementNote.gate
+                  ),
+                  ...newKeyNotes.map((keyNote) => keyNote.gate),
+                ],
+              },
+            ])
+            .then((gatedEvents) => {
+              console.log(gatedEvents);
+              setGatedNotes(
+                gatedEvents.map((gatedNote) =>
+                  eventToGatedNote(gatedNote as VerifiedEvent)
+                )
+              );
+            });
+        });
     }
   }, [relay, nostr, publicKey]);
 
   useEffect(() => {
-    if(gatedNotes.length > 0){
+    if (gatedNotes.length > 0) {
       unlockAll();
     }
   }, [gatedNotes]);
 
   // ------------------- FUNCTIONS -------------------------
 
-  const unlockAll = async() => {
-    const newKeyNotes: KeyNote [] = [];
+  const unlockAll = async () => {
+    const newKeyNotes: KeyNote[] = [];
     for (const keyNote of keyNotes) {
+      const gatedNote = gatedNotes.find(
+        (gatedNote) => gatedNote.note.id === keyNote.gate
+      );
 
-      const gatedNote = gatedNotes.find((gatedNote) => gatedNote.note.id === keyNote.gate);
-
-      if(!gatedNote){
+      if (!gatedNote) {
         newKeyNotes.push(keyNote);
         continue;
       }
 
-      const unlockedSecret = await nostr.nip04.decrypt(gatedNote.note.pubkey, keyNote.note.content);
+      const unlockedSecret = await nostr.nip04.decrypt(
+        gatedNote.note.pubkey,
+        keyNote.note.content
+      );
 
       newKeyNotes.push({
         ...keyNote,
@@ -138,41 +178,37 @@ export default function Home() {
       });
     }
 
-    setKeyNotes(newKeyNotes)
-  }
+    setKeyNotes(newKeyNotes);
+  };
 
   const handleBuy = async (gatedNote: GatedNote) => {
-
-    if(gateLoading) return;
+    if (gateLoading) return;
 
     setGateLoading(gatedNote.note.id);
 
     try {
-
-      if(!webln) throw new Error('No webln provider');
-      if(!nostr) throw new Error('No nostr provider');
-      if(!publicKey) throw new Error('No Public Key');
-      if(!relay) throw new Error('No relay');
+      if (!webln) throw new Error("No webln provider");
+      if (!nostr) throw new Error("No nostr provider");
+      if (!publicKey) throw new Error("No Public Key");
+      if (!relay) throw new Error("No relay");
 
       const uri = `${gatedNote.endpoint}/${gatedNote.note.id}`;
       const invoiceResponse = await fetch(uri);
-      const invoiceResponseJson = await invoiceResponse.json() as PREntry;
+      const invoiceResponseJson = (await invoiceResponse.json()) as PREntry;
 
       await webln.sendPayment(invoiceResponseJson.pr);
 
       const resultResponse = await fetch(invoiceResponseJson.successAction.url);
       const resultResponseJson = await resultResponse.json();
       const secret = resultResponseJson.secret;
-      
+
       const content = await nostr.nip04.encrypt(gatedNote.note.pubkey, secret);
 
       const keyEvent = {
         kind: 43,
         pubkey: publicKey,
         created_at: Math.floor(Date.now() / 1000),
-        tags: [
-          ["g", gatedNote.note.id],
-        ],
+        tags: [["g", gatedNote.note.id]],
         content: content,
       };
 
@@ -185,9 +221,8 @@ export default function Home() {
         unlockedSecret: secret,
       } as KeyNote;
       setKeyNotes([...keyNotes, keyNoteUnlocked]);
-
-    } catch(e){
-      alert(e)
+    } catch (e) {
+      alert(e);
     }
 
     setGateLoading(null);
@@ -197,18 +232,122 @@ export default function Home() {
     return content.substring(0, 500) + "...";
   };
 
+  const submitForm = async () => {
+
+    if(submittingForm) return;
+
+    setSubmittingForm(true);
+
+    try {
+        if (!webln) throw new Error("No webln provider");
+        if (!nostr) throw new Error("No nostr provider");
+        if (!publicKey) throw new Error("No Public Key");
+        if (!relay) throw new Error("No relay");
+
+        // ------------------- VALIDATE FORM -------------------------
+        const { lud16, cost, preview, content } = formData;
+
+        // 1. Check if lud16 is valid (looks like an email)
+        const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}$/;
+        if (!emailRegex.test(lud16)) throw new Error("Invalid lud16 format");
+
+        // 2. Check if price is valid ( > 1 && < 100_000 )
+        if (!cost || cost < 1 || cost > 100_000) throw new Error("Price should be >= 1 and <= 100,000 sats");
+        const unlockCost = cost * 1000;
+
+        // 3. Check if preview is valid ( < 260 chars && > 10 chars )
+        if (preview.length > 260 || preview.length < 10) throw new Error("Preview should be <= 260 chars and >= 10 chars");
+
+        // 4. Check if content is valid ( < 3000 chars && > 10 chars )
+        if (content.length > 3000 || content.length < 10) throw new Error("Content should be <= 3000 chars and >= 10 chars");
+
+
+        // ------------------- CREATE LOCKED CONTENT -------------------------
+
+        const lockedContent = {
+          kind: 1,
+          pubkey: publicKey,
+          created_at: Math.floor(Date.now() / 1000),
+          tags: [],
+          content: content,
+        }
+        const lockedContentVerified = await nostr.signEvent(lockedContent);
+
+        const secret = generatePrivateKey();
+        const gatedNote = createGatedNoteUnsigned(
+          publicKey, 
+          secret,
+          unlockCost, 
+          SERVER,
+          lockedContentVerified
+        );
+
+        const gatedNoteVerified = await nostr.signEvent(gatedNote);
+
+        const postBody: CreateNotePostBody = {
+          kind42: gatedNoteVerified,
+          lud16: lud16,
+          secret: secret,
+          cost: unlockCost,
+        }
+    
+        console.log(SERVER + '/create');
+        const response = await fetch(SERVER + '/create', {
+            method: 'POST',
+            headers: {
+                'Content-type': 'application/json'
+            },
+            body: JSON.stringify(postBody)
+        })
+
+        const responseJson = await response.json();
+        console.log(responseJson);
+
+        console.log("Publishing Gated Note...");
+        await relay.publish(gatedNoteVerified);
+
+        // ------------------- CREATE ANNOUNCEMENT NOTE -------------------------
+
+        const announcementNote = createAnnouncementNoteUnsigned(
+          publicKey,
+          preview,
+          gatedNoteVerified
+        );
+
+        console.log("Publishing Announcement Note...");
+        const announcementNoteVerified = await nostr.signEvent(announcementNote);
+        await relay.publish(announcementNoteVerified);
+
+        // ------------------- ADD NOTE TO EVENTS -------------------------
+        
+        console.log("Adding Notes to Events...");
+        setAnnouncementNotes([eventToAnnouncementNote(announcementNoteVerified), ...announcementNotes]);
+        setGatedNotes([eventToGatedNote(gatedNoteVerified), ...gatedNotes]);
+
+    } catch (e) {
+        alert(e);
+        console.log(e);
+    }
+
+    setSubmittingForm(false);
+    setFormData(DEFAULT_FORM_DATA);
+    setPostFormOpen(false);
+};
+
   // ------------------- RENDERERS -------------------------
 
   const renderUnlockedContent = (gatedNote: GatedNote, keyNote: KeyNote) => {
-
-    const unlockedNote = unlockGatedNote(gatedNote.note, keyNote.unlockedSecret as string);
+    const unlockedNote = unlockGatedNote(
+      gatedNote.note,
+      keyNote.unlockedSecret as string
+    );
 
     return (
       <div className="mt-5">
         <p>🔓 {unlockedNote.content}</p>
       </div>
     );
-  }
+  };
 
   const renderLockedContent = (gatedNote: GatedNote) => {
     return (
@@ -223,20 +362,14 @@ export default function Home() {
             }}
             className={`px-3 py-2 border border-r-4 border-white rounded-full text-white hover:bg-white hover:text-black hover:border-black`}
           >
-            {
-              gateLoading && gatedNote.note.id === gateLoading ? 
-              (
-                'Unlocking...'
-              ) : 
-              (
-                `${(gatedNote.cost / 1000).toFixed(0)} ⚡🔓`
-              )
-            }
+            {gateLoading && gatedNote.note.id === gateLoading
+              ? "Unlocking..."
+              : `${(gatedNote.cost / 1000).toFixed(0)} ⚡🔓`}
           </button>
         </div>
       </div>
     );
-  }
+  };
 
   const renderGatedContent = (event: AnnouncementNote) => {
     const gatedNote = gatedNotes.find(
@@ -248,8 +381,8 @@ export default function Home() {
 
     if (!gatedNote) return null;
 
-    if(keyNote) return renderUnlockedContent(gatedNote, keyNote);
-    
+    if (keyNote) return renderUnlockedContent(gatedNote, keyNote);
+
     return renderLockedContent(gatedNote);
   };
 
@@ -276,6 +409,93 @@ export default function Home() {
     );
   };
 
+  const renderForm = () => {
+    if (!isPostFormOpen) return null;
+
+    return (
+      <div className="fixed top-0 left-0 w-full h-full flex items-center justify-center bg-opacity-60 bg-black z-50">
+        <div className="bg-black border-2 border-white p-5 rounded-lg shadow-lg w-1/2 text-white">
+          <h2 className="mb-4 text-lg">Create Gated Post</h2>
+          <div className="mt-1 mb-2">
+            <label className="block mb-2">Lud16</label>
+            <input
+              type="email"
+              placeholder="coachchuckff@getalby.com"
+              value={formData.lud16}
+              onChange={(e) =>
+                setFormData({ ...formData, lud16: e.target.value })
+              }
+              className="p-2 w-full border border-white bg-black text-white rounded"
+            />
+          </div>
+          <div className="mt-1 mb-2">
+            <label className="block mb-2">Unlock Cost ( sats )</label>
+            <input
+              type="number"
+              min="1"
+              value={formData.cost}
+              onChange={(e) =>
+                setFormData({ ...formData, cost: +e.target.value })
+              }
+              className="p-2 w-full border border-white bg-black text-white rounded"
+            />
+          </div>
+          <div className="mt-1 mb-2">
+            <label className="block mb-2">Preview</label>
+            <input
+              type="text"
+              placeholder={`Hey unlock my post for ${formData.cost} sats!`}
+              maxLength={260}
+              value={formData.preview}
+              onChange={(e) =>
+                setFormData({ ...formData, preview: e.target.value })
+              }
+              className="p-2 w-full border border-white bg-black text-white rounded"
+            />
+          </div>
+          <div className="mt-1 mb-2">
+            <label className="block mb-2">Content</label>
+            <textarea
+              maxLength={3000}
+              placeholder={`This is the content that will be unlocked!`}
+              value={formData.content}
+              onChange={(e) =>
+                setFormData({ ...formData, content: e.target.value })
+              }
+              className="p-2 w-full border border-white bg-black text-white rounded"
+            ></textarea>
+          </div>
+          <div className="mt-4 flex justify-between">
+            <button
+              onClick={() => setPostFormOpen(false)}
+              className="px-4 py-2 bg-black border border-white text-white rounded hover:bg-white hover:text-black"
+            >
+              Close
+            </button>
+            <button
+              onClick={submitForm}
+              className="px-4 py-2 bg-black border border-white text-white rounded hover:bg-white hover:text-black"
+            >
+              Submit
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderPostButton = () => {
+    return (
+      <button
+        onClick={() => setPostFormOpen(true)}
+        className="fixed bottom-8 right-8 px-6 py-3 rounded-full border-2 border-white font-bold text-white shadow-lg bg-black hover:bg-white hover:text-black"
+        style={{ zIndex: 1000 }}
+      >
+        +
+      </button>
+    );
+  };
+
   // ------------------- MAIN -------------------------
 
   return (
@@ -284,6 +504,8 @@ export default function Home() {
         RELAY: {process.env.NEXT_PUBLIC_NOSTR_RELAY as string}
       </h3>
       {renderEvents()}
+      {renderPostButton()}
+      {renderForm()}
     </main>
   );
 }

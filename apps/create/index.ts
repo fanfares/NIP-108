@@ -3,8 +3,8 @@ import { CreateNotePostBody, createAnnouncementNote, createGatedNote, createKeyN
 import { PREntry } from "database";
 import storyData from './story.json';
 
-const SERVER_PORT = Number(Bun.env.SERVER_PORT);
-const SERVER = `${Bun.env.DOMAIN as string}:${SERVER_PORT}`;
+const NEXT_PUBLIC_SERVER_PORT = Number(Bun.env.NEXT_PUBLIC_SERVER_PORT);
+const SERVER = `${Bun.env.NEXT_PUBLIC_DOMAIN as string}:${NEXT_PUBLIC_SERVER_PORT}`;
 const LNBITS_API = Bun.env.LNBITS_API as string
 const LUD16 = Bun.env.LUD16 as string
 const RELAY = Bun.env.NOSTR_RELAY as string
@@ -25,7 +25,8 @@ function createLockedEvent(privateKey: string, content: string) {
     return finishEvent(event, privateKey);
   }
 
-  async function payInvoice (pr: string) {
+  async function payInvoice(pr: string) {
+
     return fetch("https://legend.lnbits.com/api/v1/payments", {
         method: 'POST',
         headers: {
@@ -37,6 +38,7 @@ function createLockedEvent(privateKey: string, content: string) {
             bolt11: pr,
         })
     });
+
 }
 
 async function createGatedEvent(

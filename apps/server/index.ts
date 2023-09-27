@@ -19,8 +19,8 @@ setupPRTable(DB, PR_TABLE); // Setup the table immediately after its definition
 // -------------------- SERVER SETUP --------------------
 
 const APP = express();
-const SERVER_PORT = Number(Bun.env.SERVER_PORT);
-const DOMAIN = `${Bun.env.DOMAIN as string}:${SERVER_PORT}`;
+const NEXT_PUBLIC_SERVER_PORT = Number(Bun.env.NEXT_PUBLIC_SERVER_PORT);
+const NEXT_PUBLIC_DOMAIN = `${Bun.env.NEXT_PUBLIC_DOMAIN as string}:${NEXT_PUBLIC_SERVER_PORT}`;
 
 APP.use(cors())
 APP.use(bodyParser.json())
@@ -29,7 +29,7 @@ APP.post("/create", async (request, response) => {
   try {
     const postBody: CreateNotePostBody = request.body;
 
-    await verifyCreateNote(postBody, DOMAIN);
+    await verifyCreateNote(postBody, NEXT_PUBLIC_DOMAIN);
 
     await createNoteEntry(
       DB, 
@@ -57,7 +57,7 @@ APP.get("/:noteId", async (request, response) => {
 
     const invoice = await getInvoice(
       noteEntry.lud16,
-      DOMAIN,
+      NEXT_PUBLIC_DOMAIN,
       noteEntry.price,
       noteId,
     )
@@ -110,7 +110,7 @@ APP.get("/:noteId/:paymentHash", async (request, response) => {
   }
 });
 
-APP.listen(SERVER_PORT, () => {
+APP.listen(NEXT_PUBLIC_SERVER_PORT, () => {
   serverLog(Action.SERVER, Status.INFO, "Welcome to NIP-108: Lightning Gated Notes")
-  serverLog(Action.SERVER, Status.INFO, `Listening on port ${SERVER_PORT}...`)
+  serverLog(Action.SERVER, Status.INFO, `Listening on port ${NEXT_PUBLIC_SERVER_PORT}...`)
 });
