@@ -60,7 +60,7 @@ async function createGatedEvent(
     );
 
     const postBody: CreateNotePostBody = {
-        kind42: gatedNote,
+        gateEvent: gatedNote,
         lud16: lud16,
         secret: secret,
         cost: cost,

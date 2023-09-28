@@ -13,6 +13,7 @@ import {
   CreateNotePostBody,
   GatedNote,
   KeyNote,
+  NIP_108_KINDS,
   createAnnouncementNoteUnsigned,
   createGatedNoteUnsigned,
   eventToAnnouncementNote,
@@ -22,8 +23,8 @@ import {
 } from "server";
 import { PREntry } from "database";
 
-const SERVER_PORT = Number(process.env.NEXT_PUBLIC_SERVER_PORT);
-const SERVER = `${process.env.NEXT_PUBLIC_DOMAIN as string}:${SERVER_PORT}`;
+const RELAY = process.env.NEXT_PUBLIC_NOSTR_RELAY as string;
+const GATE_SERVER = process.env.NEXT_PUBLIC_GATE_SERVER as string;
 
 interface FormData {
   lud16: string,
@@ -78,7 +79,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const newRelay = relayInit(process.env.NEXT_PUBLIC_NOSTR_RELAY as string);
+    const newRelay = relayInit(RELAY);
     newRelay.on("connect", () => {
       setRelay(newRelay);
     });
@@ -95,12 +96,12 @@ export default function Home() {
       relay
         .list([
           {
-            kinds: [1],
+            kinds: [NIP_108_KINDS.announcement],
             limit: 3,
             // since,
           },
           {
-            kinds: [43],
+            kinds: [NIP_108_KINDS.key],
             limit: 3,
             authors: [publicKey as string],
             // since,
@@ -111,11 +112,11 @@ export default function Home() {
           const newKeyNotes: KeyNote[] = [];
 
           for (const note of notes) {
-            if (note.kind === 1 && note.tags.find((tag) => tag[0] === "g")) {
+            if (note.kind === NIP_108_KINDS.announcement && note.tags.find((tag) => tag[0] === "g")) {
               newAnnouncementNotes.push(
                 eventToAnnouncementNote(note as VerifiedEvent)
               );
-            } else if (note.kind === 43) {
+            } else if (note.kind === NIP_108_KINDS.key) {
               newKeyNotes.push(eventToKeyNote(note as VerifiedEvent));
             }
           }
@@ -204,7 +205,7 @@ export default function Home() {
       const content = await nostr.nip04.encrypt(gatedNote.note.pubkey, secret);
 
       const keyEvent = {
-        kind: 43,
+        kind: NIP_108_KINDS.key,
         pubkey: publicKey,
         created_at: Math.floor(Date.now() / 1000),
         tags: [["g", gatedNote.note.id]],
@@ -277,21 +278,20 @@ export default function Home() {
           publicKey, 
           secret,
           unlockCost, 
-          SERVER,
+          GATE_SERVER,
           lockedContentVerified
         );
 
         const gatedNoteVerified = await nostr.signEvent(gatedNote);
 
         const postBody: CreateNotePostBody = {
-          kind42: gatedNoteVerified,
+          gateEvent: gatedNoteVerified,
           lud16: lud16,
           secret: secret,
           cost: unlockCost,
         }
     
-        console.log(SERVER + '/create');
-        const response = await fetch(SERVER + '/create', {
+        const response = await fetch(GATE_SERVER + '/create', {
             method: 'POST',
             headers: {
                 'Content-type': 'application/json'

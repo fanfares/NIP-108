@@ -9,8 +9,14 @@ import {
 import { decrypt, encrypt, hashToKey } from "./crypto";
 import { getLud16Url, isValidLud16 } from "./lightning";
 
+export enum NIP_108_KINDS {
+  announcement = 54,
+  gate = 55,
+  key = 56,
+}
+
 export interface CreateNotePostBody {
-  kind42: VerifiedEvent<number>;
+  gateEvent: VerifiedEvent<number>;
   lud16: string;
   secret: string;
   cost: number;
@@ -92,7 +98,7 @@ export function createGatedNoteUnsigned(
   const encryptedNote = encrypt(noteToEncrypt, noteSecretKey);
 
   const event = {
-    kind: 42,
+    kind: NIP_108_KINDS.gate,
     pubkey: publicKey,
     created_at: Math.floor(Date.now() / 1000),
     tags: [
@@ -132,7 +138,7 @@ export function createKeyNoteUnsigned(
   ): EventTemplate<number> {
 
   const event = {
-    kind: 43,
+    kind: NIP_108_KINDS.key,
     pubkey: publicKey,
     created_at: Math.floor(Date.now() / 1000),
     tags: [
@@ -163,7 +169,7 @@ export function createAnnouncementNoteUnsigned(
 ): EventTemplate<number> {
 
   const event = {
-    kind: 1,
+    kind: NIP_108_KINDS.announcement,
     pubkey: publicKey,
     created_at: Math.floor(Date.now() / 1000),
     tags: [
@@ -223,7 +229,7 @@ export async function unlockGatedNoteFromKeyNote(
 }
 
 export async function verifyCreateNote(post: CreateNotePostBody, serverEndpoint: string) {
-    const { kind42, lud16, secret, cost } = post;
+    const { gateEvent: kind42, lud16, secret, cost } = post;
   
     // Check Secret
     if (!secret) throw new Error("Secret needs to exist");
