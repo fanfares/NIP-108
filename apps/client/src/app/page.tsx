@@ -27,6 +27,17 @@ import { PREntry } from "database";
 const RELAY = process.env.NEXT_PUBLIC_NOSTR_RELAY as string;
 const GATE_SERVER = process.env.NEXT_PUBLIC_GATE_SERVER as string;
 
+const MIN_PREVIEW_LENGTH = Number(process.env.NEXT_PUBLIC_MIN_PREVIEW_LENGTH);
+const MAX_PREVIEW_LENGTH = Number(process.env.NEXT_PUBLIC_MAX_PREVIEW_LENGTH);
+
+const MIN_CONTENT_LENGTH = Number(process.env.NEXT_PUBLIC_MIN_CONTENT_LENGTH);
+const MAX_CONTENT_LENGTH = Number(process.env.NEXT_PUBLIC_MAX_CONTENT_LENGTH);
+
+const MIN_SAT_COST = Number(process.env.NEXT_PUBLIC_MIN_SAT_COST);
+const MAX_SAT_COST = Number(process.env.NEXT_PUBLIC_MAX_SAT_COST);
+
+const NOSTR_FETCH_LIMIT = Number(process.env.NEXT_PUBLIC_NOSTR_FETCH_LIMIT);
+
 interface FormData {
   lud16: string;
   cost?: number;
@@ -91,19 +102,16 @@ export default function Home() {
 
   useEffect(() => {
     if (relay && nostr && publicKey) {
-      // const since = Math.round(Date.now() / 1000) - (5 * 60 * 60);
       relay
         .list([
           {
             kinds: [NIP_108_KINDS.announcement],
-            limit: 3,
-            // since,
+            limit: NOSTR_FETCH_LIMIT,
           },
           {
             kinds: [NIP_108_KINDS.key],
-            limit: 3,
+            limit: NOSTR_FETCH_LIMIT,
             authors: [publicKey as string],
-            // since,
           },
         ])
         .then((notes) => {
@@ -252,18 +260,18 @@ export default function Home() {
       const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}$/;
       if (!emailRegex.test(lud16)) throw new Error("Invalid lud16 format");
 
-      // 2. Check if price is valid ( > 1 && < 100_000 )
-      if (!cost || cost < 1 || cost > 100_000)
-        throw new Error("Price should be >= 1 and <= 100,000 sats");
+      // 2. Check if price is valid
+      if (!cost || cost < MIN_SAT_COST || cost > MAX_SAT_COST)
+        throw new Error(`Price should be >= ${MIN_SAT_COST} and <= ${MAX_SAT_COST} sats`);
       const unlockCost = cost * 1000;
 
-      // 3. Check if preview is valid ( < 260 chars && > 10 chars )
-      if (preview.length > 260 || preview.length < 10)
-        throw new Error("Preview should be <= 260 chars and >= 10 chars");
+      // 3. Check if preview is valid
+      if (preview.length > MAX_PREVIEW_LENGTH || preview.length < MIN_PREVIEW_LENGTH)
+        throw new Error(`Preview should be <= 260 chars and >= ${MIN_PREVIEW_LENGTH} chars`);
 
-      // 4. Check if content is valid ( < 3000 chars && > 10 chars )
-      if (content.length > 3000 || content.length < 10)
-        throw new Error("Content should be <= 3000 chars and >= 10 chars");
+      // 4. Check if content is valid
+      if (content.length > MAX_CONTENT_LENGTH || content.length < MIN_CONTENT_LENGTH)
+        throw new Error(`Content should be <= ${MAX_CONTENT_LENGTH} chars and >= ${MIN_CONTENT_LENGTH} chars`);
 
       // ------------------- CREATE LOCKED CONTENT -------------------------
 
@@ -441,7 +449,8 @@ export default function Home() {
             <label className="block mb-2">Unlock Cost ( sats )</label>
             <input
               type="number"
-              min="1"
+              min={`${MIN_SAT_COST}`}
+              max={`${MAX_SAT_COST}`}
               value={formData.cost}
               onChange={(e) =>
                 setFormData({ ...formData, cost: +e.target.value })
@@ -454,7 +463,7 @@ export default function Home() {
             <input
               type="text"
               placeholder={`Hey unlock my post for ${formData.cost} sats!`}
-              maxLength={260}
+              maxLength={MAX_PREVIEW_LENGTH}
               value={formData.preview}
               onChange={(e) =>
                 setFormData({ ...formData, preview: e.target.value })
@@ -465,7 +474,7 @@ export default function Home() {
           <div className="mt-1 mb-2">
             <label className="block mb-2">Content</label>
             <textarea
-              maxLength={3000}
+              maxLength={MAX_CONTENT_LENGTH}
               placeholder={`This is the content that will be unlocked!`}
               value={formData.content}
               onChange={(e) =>
