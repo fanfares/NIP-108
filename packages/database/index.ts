@@ -9,7 +9,77 @@ export interface NoteEntry {
     timestamp: number;
 }
 
+// ---------------- SECURITY ------------------
+const NOTE_TABLE = Bun.env.DB_NOTE_TABLE as string;
+const PR_TABLE = Bun.env.DB_PR_TABLE as string;
+
+function checkIfIsTableOk(table: string){
+    if(table !== NOTE_TABLE && table !== PR_TABLE){
+        throw new Error("Bad table");
+    }
+}
+
+function checkIfClientInputsAreOk(inputs: string[]): void {
+    const alphanumericRegex = /^[a-z0-9]+$/i;  // Matches a string that contains only letters and numbers
+    const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/; // Matches a basic email format
+
+    for (const input of inputs) {
+        if (!alphanumericRegex.test(input) && !emailRegex.test(input)) {
+            throw new Error(`Input "${input}" is neither alphanumeric nor a valid email.`);
+        }
+    }
+}
+
+function checkIfPrEntryIsOkay(entry: Omit<PREntry, 'timestamp' | 'paymentStatus'> | PREntry): void {
+    const alphanumericRegex = /^[a-z0-9]+$/i;
+    const urlRegex = /^(https?|chrome):\/\/[^\s$.?#].[^\s]*$/;
+
+    // Check for required fields
+    if (!entry.paymentHash || !entry.noteId || !entry.pr || !entry.verify) {
+        throw new Error("Missing required fields in the PREntry.");
+    }
+
+    // Check the format of required alphanumeric fields
+    if (!alphanumericRegex.test(entry.paymentHash) || 
+        !alphanumericRegex.test(entry.noteId) ||
+        !alphanumericRegex.test(entry.pr) ||
+        !urlRegex.test(entry.verify)) {
+        throw new Error("Required fields of PREntry should be alphanumeric.");
+    }
+
+    // Check status
+    if (entry.status !== "OK" && entry.status !== "ERROR") {
+        throw new Error(`Invalid status in PREntry: ${entry.status}`);
+    }
+
+    // Check successAction
+    if (entry.successAction.tag !== "url" ||
+        !urlRegex.test(entry.successAction.url)
+        // !alphanumericRegex.test(entry.successAction.description) <- Don't need to test since we stringify it.
+    ) {
+        throw new Error("Invalid successAction in PREntry.");
+    }
+
+    // Check routes
+    if (entry.routes.some(route => !alphanumericRegex.test(route))) {
+        throw new Error("Invalid routes in PREntry.");
+    }
+
+    // Check optional fields
+    if ("paymentStatus" in entry && (entry.paymentStatus !== "UNPAID" && entry.paymentStatus !== "PAID")) {
+        throw new Error(`Invalid paymentStatus in PREntry: ${entry.paymentStatus}`);
+    }
+
+    if ("timestamp" in entry && typeof entry.timestamp !== "number") {
+        throw new Error(`Invalid timestamp in PREntry: ${entry.timestamp}`);
+    }
+}
+
+// ---------------- TABLE SETUP ------------------
+
 export function setupNoteTable(db: Database, table: string){
+    checkIfIsTableOk(table);
+
     const createTableQuery = `
     CREATE TABLE IF NOT EXISTS ${table} (
       noteId TEXT PRIMARY KEY,
@@ -30,6 +100,8 @@ export interface PREntry extends Invoice {
 }
 
 export function setupPRTable(db: Database, table: string) {
+    checkIfIsTableOk(table);
+
     const createTableQuery = `
     CREATE TABLE IF NOT EXISTS ${table} (
       paymentHash TEXT PRIMARY KEY,
@@ -50,6 +122,9 @@ export function setupPRTable(db: Database, table: string) {
 // ------------------- NOTE ENTRIES ------------------------
 
 export function createNoteEntry(db: Database, table: string, noteId: string, lud16: string, secret: string, price: number) {
+    checkIfClientInputsAreOk([noteId, lud16, secret, price.toString() ])
+    checkIfIsTableOk(table);
+
     const timestamp = Math.floor(Date.now()); // Current Unix timestamp
   
     const insertQuery = db.query(`
@@ -61,6 +136,10 @@ export function createNoteEntry(db: Database, table: string, noteId: string, lud
   };
 
 export function getNoteEntry(db: Database, table: string, noteId: string): NoteEntry {
+    checkIfClientInputsAreOk([ noteId ])
+    checkIfIsTableOk(table);
+
+
     const selectQuery = db.query(`SELECT * FROM ${table} WHERE noteId = $noteId`);
     const result = selectQuery.get({ $noteId: noteId }) as NoteEntry | undefined;
   
@@ -72,6 +151,9 @@ export function getNoteEntry(db: Database, table: string, noteId: string): NoteE
 }
 
 export function changeNotePrice(db: Database, table: string, noteId: string, newPrice: number){
+    checkIfClientInputsAreOk([ noteId, newPrice.toString() ]);
+    checkIfIsTableOk(table);
+
     const selectQuery = db.query(`SELECT * FROM ${table} WHERE noteId = $noteId`);
     const entry = selectQuery.get({ $noteId: noteId });
     
@@ -86,6 +168,9 @@ export function changeNotePrice(db: Database, table: string, noteId: string, new
 
 // ------------------- PR ENTRIES ------------------------
 export function createPrEntry(db: Database, table: string, entry: Omit<PREntry, 'timestamp' | 'paymentStatus'> | PREntry) {
+    checkIfPrEntryIsOkay(entry);
+    checkIfIsTableOk(table);
+
     const timestamp = Math.floor(Date.now() / 1000); // Current Unix timestamp
     const paymentStatus = "UNPAID";
 
@@ -110,6 +195,9 @@ export function createPrEntry(db: Database, table: string, entry: Omit<PREntry, 
 }
 
 export function getPREntry(db: Database, table: string, paymentHash: string): PREntry {
+    checkIfClientInputsAreOk([ paymentHash ])
+    checkIfIsTableOk(table);
+
     const selectQuery = db.query(`SELECT * FROM ${table} WHERE paymentHash = $paymentHash`);
     const rawResult = selectQuery.get({ $paymentHash: paymentHash }) as PREntry;
 
@@ -128,6 +216,8 @@ export function getPREntry(db: Database, table: string, paymentHash: string): PR
 }
 
 export function markPaid(db: Database, table: string, paymentHash: string): void {
+    checkIfClientInputsAreOk([ paymentHash ])
+    checkIfIsTableOk(table);
 
     const prEntry = getPREntry(db, table, paymentHash);
 
