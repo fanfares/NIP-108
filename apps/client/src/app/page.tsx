@@ -6,6 +6,7 @@ import {
   VerifiedEvent,
   generatePrivateKey,
 } from "nostr-tools";
+import { FaGithub, FaExternalLinkAlt } from 'react-icons/fa';
 import { useEffect, useState } from "react";
 import { WebLNProvider, requestProvider } from "webln";
 import {
@@ -396,7 +397,8 @@ export default function Home() {
             >
               {/* This container ensures content wrapping */}
               <div className="flex-grow overflow-hidden">
-                <p className="text-xs mb-5">ID: {event.note.id}</p>
+                <p className="text-xs mb-1">ID: {event.note.id}</p>
+                <p className="text-xs mb-5">Author: {event.note.pubkey}</p>
                 <h3 className="break-words">{event.note.content}</h3>
               </div>
               {/* Button with a thin white outline */}
@@ -495,6 +497,20 @@ export default function Home() {
     );
   };
 
+  const renderSocials = () => {
+    return (
+      <div className="fixed top-5 left-5 flex space-x-5 z-50">
+        <a href="https://github.com/project-excalibur/NIP-108" target="_blank" rel="noopener noreferrer">
+          <FaGithub className="text-white hover:text-gray-400" size={24} />
+        </a>
+        <a href="https://nostrplayground.com" target="_blank" rel="noopener noreferrer">
+          <FaExternalLinkAlt className="text-white hover:text-gray-400" size={24} />
+        </a>
+      </div>
+    );
+  }
+  
+
   // ------------------- MAIN -------------------------
 
   return (
@@ -505,6 +521,7 @@ export default function Home() {
       {renderEvents()}
       {renderPostButton()}
       {renderForm()}
+      {renderSocials()}
     </main>
   );
 }

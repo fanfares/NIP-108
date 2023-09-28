@@ -19,6 +19,7 @@
     "@types/crypto-js": "^4.1.2",
     "browserify-cipher": "^1.0.1",
     "crypto-js": "^4.1.1",
+    "react-icons": "^4.11.0",
     "webln": "^0.3.2"
   }
 }
