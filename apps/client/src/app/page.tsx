@@ -6,7 +6,7 @@ import {
   VerifiedEvent,
   generatePrivateKey,
 } from "nostr-tools";
-import { FaGithub, FaExternalLinkAlt } from 'react-icons/fa';
+import { FaGithub, FaExternalLinkAlt } from "react-icons/fa";
 import { useEffect, useState } from "react";
 import { WebLNProvider, requestProvider } from "webln";
 import {
@@ -28,19 +28,17 @@ const RELAY = process.env.NEXT_PUBLIC_NOSTR_RELAY as string;
 const GATE_SERVER = process.env.NEXT_PUBLIC_GATE_SERVER as string;
 
 interface FormData {
-  lud16: string,
-  cost?: number,
-  preview: string,
-  content: string,
+  lud16: string;
+  cost?: number;
+  preview: string;
+  content: string;
 }
 const DEFAULT_FORM_DATA: FormData = {
   lud16: "coachchuckff@getalby.com",
   cost: 1,
   preview: "Hey unlock my post for 1 sat!",
   content: "This is the content that will be unlocked!",
-}
-
-
+};
 
 export default function Home() {
   // ------------------- STATES -------------------------
@@ -113,7 +111,10 @@ export default function Home() {
           const newKeyNotes: KeyNote[] = [];
 
           for (const note of notes) {
-            if (note.kind === NIP_108_KINDS.announcement && note.tags.find((tag) => tag[0] === "g")) {
+            if (
+              note.kind === NIP_108_KINDS.announcement &&
+              note.tags.find((tag) => tag[0] === "g")
+            ) {
               newAnnouncementNotes.push(
                 eventToAnnouncementNote(note as VerifiedEvent)
               );
@@ -234,107 +235,114 @@ export default function Home() {
   };
 
   const submitForm = async () => {
-
-    if(submittingForm) return;
+    if (submittingForm) return;
 
     setSubmittingForm(true);
 
     try {
-        if (!webln) throw new Error("No webln provider");
-        if (!nostr) throw new Error("No nostr provider");
-        if (!publicKey) throw new Error("No Public Key");
-        if (!relay) throw new Error("No relay");
+      if (!webln) throw new Error("No webln provider");
+      if (!nostr) throw new Error("No nostr provider");
+      if (!publicKey) throw new Error("No Public Key");
+      if (!relay) throw new Error("No relay");
 
-        // ------------------- VALIDATE FORM -------------------------
-        const { lud16, cost, preview, content } = formData;
+      // ------------------- VALIDATE FORM -------------------------
+      const { lud16, cost, preview, content } = formData;
 
-        // 1. Check if lud16 is valid (looks like an email)
-        const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}$/;
-        if (!emailRegex.test(lud16)) throw new Error("Invalid lud16 format");
+      // 1. Check if lud16 is valid (looks like an email)
+      const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}$/;
+      if (!emailRegex.test(lud16)) throw new Error("Invalid lud16 format");
 
-        // 2. Check if price is valid ( > 1 && < 100_000 )
-        if (!cost || cost < 1 || cost > 100_000) throw new Error("Price should be >= 1 and <= 100,000 sats");
-        const unlockCost = cost * 1000;
+      // 2. Check if price is valid ( > 1 && < 100_000 )
+      if (!cost || cost < 1 || cost > 100_000)
+        throw new Error("Price should be >= 1 and <= 100,000 sats");
+      const unlockCost = cost * 1000;
 
-        // 3. Check if preview is valid ( < 260 chars && > 10 chars )
-        if (preview.length > 260 || preview.length < 10) throw new Error("Preview should be <= 260 chars and >= 10 chars");
+      // 3. Check if preview is valid ( < 260 chars && > 10 chars )
+      if (preview.length > 260 || preview.length < 10)
+        throw new Error("Preview should be <= 260 chars and >= 10 chars");
 
-        // 4. Check if content is valid ( < 3000 chars && > 10 chars )
-        if (content.length > 3000 || content.length < 10) throw new Error("Content should be <= 3000 chars and >= 10 chars");
+      // 4. Check if content is valid ( < 3000 chars && > 10 chars )
+      if (content.length > 3000 || content.length < 10)
+        throw new Error("Content should be <= 3000 chars and >= 10 chars");
 
+      // ------------------- CREATE LOCKED CONTENT -------------------------
 
-        // ------------------- CREATE LOCKED CONTENT -------------------------
+      const lockedContent = {
+        kind: 1,
+        pubkey: publicKey,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [],
+        content: content,
+      };
+      const lockedContentVerified = await nostr.signEvent(lockedContent);
 
-        const lockedContent = {
-          kind: 1,
-          pubkey: publicKey,
-          created_at: Math.floor(Date.now() / 1000),
-          tags: [],
-          content: content,
-        }
-        const lockedContentVerified = await nostr.signEvent(lockedContent);
+      const secret = generatePrivateKey();
+      const gatedNote = createGatedNoteUnsigned(
+        publicKey,
+        secret,
+        unlockCost,
+        GATE_SERVER,
+        lockedContentVerified
+      );
 
-        const secret = generatePrivateKey();
-        const gatedNote = createGatedNoteUnsigned(
-          publicKey, 
-          secret,
-          unlockCost, 
-          GATE_SERVER,
-          lockedContentVerified
-        );
+      const gatedNoteVerified = await nostr.signEvent(gatedNote);
 
-        const gatedNoteVerified = await nostr.signEvent(gatedNote);
+      const postBody: CreateNotePostBody = {
+        gateEvent: gatedNoteVerified,
+        lud16: lud16,
+        secret: secret,
+        cost: unlockCost,
+      };
 
-        const postBody: CreateNotePostBody = {
-          gateEvent: gatedNoteVerified,
-          lud16: lud16,
-          secret: secret,
-          cost: unlockCost,
-        }
-    
-        const response = await fetch(GATE_SERVER + '/create', {
-            method: 'POST',
-            headers: {
-                'Content-type': 'application/json'
-            },
-            body: JSON.stringify(postBody)
-        })
+      const response = await fetch(GATE_SERVER + "/create", {
+        method: "POST",
+        headers: {
+          "Content-type": "application/json",
+        },
+        body: JSON.stringify(postBody),
+      });
 
-        const responseJson = await response.json();
-        console.log(responseJson);
+      const responseJson = await response.json();
+      console.log(responseJson);
 
-        console.log("Publishing Gated Note...");
-        await relay.publish(gatedNoteVerified);
+      console.log("Publishing Gated Note...");
+      await relay.publish(gatedNoteVerified);
 
-        // ------------------- CREATE ANNOUNCEMENT NOTE -------------------------
+      // ------------------- CREATE ANNOUNCEMENT NOTE -------------------------
 
-        const announcementNote = createAnnouncementNoteUnsigned(
-          publicKey,
-          preview,
-          gatedNoteVerified
-        );
+      const announcementNote = createAnnouncementNoteUnsigned(
+        publicKey,
+        preview,
+        gatedNoteVerified
+      );
 
-        console.log("Publishing Announcement Note...");
-        const announcementNoteVerified = await nostr.signEvent(announcementNote);
-        await relay.publish(announcementNoteVerified);
+      console.log("Publishing Announcement Note...");
+      const announcementNoteVerified = await nostr.signEvent(announcementNote);
+      await relay.publish(announcementNoteVerified);
 
-        // ------------------- ADD NOTE TO EVENTS -------------------------
-        
-        console.log("Adding Notes to Events...");
-        setAnnouncementNotes([eventToAnnouncementNote(announcementNoteVerified), ...announcementNotes]);
-        setGatedNotes([eventToGatedNote(gatedNoteVerified), ...gatedNotes]);
+      // ------------------- ADD NOTE TO EVENTS -------------------------
 
+      console.log("Adding Notes to Events...");
+      setAnnouncementNotes([
+        eventToAnnouncementNote(announcementNoteVerified),
+        ...announcementNotes,
+      ]);
+      setGatedNotes([eventToGatedNote(gatedNoteVerified), ...gatedNotes]);
     } catch (e) {
-        alert(e);
-        console.log(e);
+      alert(e);
+      console.log(e);
     }
 
     setSubmittingForm(false);
     setFormData(DEFAULT_FORM_DATA);
     setPostFormOpen(false);
-};
+  };
 
   // ------------------- RENDERERS -------------------------
+
+  const renderHeader = () => {
+    return <h3 className="mb-2">RELAY: {RELAY}</h3>;
+  };
 
   const renderUnlockedContent = (gatedNote: GatedNote, keyNote: KeyNote) => {
     const unlockedNote = unlockGatedNote(
@@ -500,24 +508,32 @@ export default function Home() {
   const renderSocials = () => {
     return (
       <div className="fixed top-5 left-5 flex space-x-5 z-50">
-        <a href="https://github.com/project-excalibur/NIP-108" target="_blank" rel="noopener noreferrer">
+        <a
+          href="https://github.com/project-excalibur/NIP-108"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           <FaGithub className="text-white hover:text-gray-400" size={24} />
         </a>
-        <a href="https://nostrplayground.com" target="_blank" rel="noopener noreferrer">
-          <FaExternalLinkAlt className="text-white hover:text-gray-400" size={24} />
+        <a
+          href="https://nostrplayground.com"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <FaExternalLinkAlt
+            className="text-white hover:text-gray-400"
+            size={24}
+          />
         </a>
       </div>
     );
-  }
-  
+  };
 
   // ------------------- MAIN -------------------------
 
   return (
     <main className="flex min-h-screen flex-col items-center p-24">
-      <h3 className="mb-2">
-        RELAY: {process.env.NEXT_PUBLIC_NOSTR_RELAY as string}
-      </h3>
+      {renderHeader()}
       {renderEvents()}
       {renderPostButton()}
       {renderForm()}
