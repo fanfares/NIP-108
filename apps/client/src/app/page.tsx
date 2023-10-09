@@ -20,6 +20,7 @@ import {
   eventToAnnouncementNote,
   eventToGatedNote,
   eventToKeyNote,
+  getNostrProfileFromKey,
   unlockGatedNote,
 } from "server"
 import { PREntry } from "database"
@@ -38,6 +39,21 @@ const MAX_SAT_COST = Number(process.env.NEXT_PUBLIC_MAX_SAT_COST)
 
 const NOSTR_FETCH_LIMIT = Number(process.env.NEXT_PUBLIC_NOSTR_FETCH_LIMIT)
 
+interface NostrProfile {
+  pubkey?: string
+  relays?: string[]
+  banner?: string
+  damus_donation_v2?: number
+  website?: string
+  nip05?: string
+  picture?: string
+  lud16?: string
+  lud06?: string
+  display_name?: string
+  about?: string
+  name?: string
+}
+
 interface FormData {
   lud16: string
   cost?: number
@@ -53,6 +69,7 @@ const DEFAULT_FORM_DATA: FormData = {
 
 export default function Home() {
   // ------------------- STATES -------------------------
+  const [profile, setProfile] = useState<NostrProfile | null>(null)
 
   const [gateLoading, setGateLoading] = useState<string | null>()
   const [relay, setRelay] = useState<Relay | null>(null)
@@ -361,7 +378,11 @@ export default function Home() {
   // ------------------- RENDERERS -------------------------
 
   const renderHeader = () => {
-    return <h3 className="mb-2 text-2xl font-bold ">RELAY: {RELAY}</h3>
+    return (
+      <h3 className="top-0 text-2xl font-bold fixed h-20 max-w-5xl border-white/20 flex items-center w-full justify-center backdrop-blur-md">
+        RELAY: {RELAY}
+      </h3>
+    )
   }
 
   const renderUnlockedContent = (gatedNote: GatedNote, keyNote: KeyNote) => {
@@ -417,6 +438,8 @@ export default function Home() {
     return (
       <div className="w-full mt-4 border-b border-white/20">
         {announcementNotes.map((event, index) => {
+          getNostrProfileFromKey(event.note.pubkey)
+          console.log(`profile ${profile}`)
           return (
             <div
               key={index}
@@ -424,8 +447,10 @@ export default function Home() {
               {/* This container ensures content wrapping */}
               <div className="flex-grow overflow-hidden">
                 <p className="text-xs mb-1">ID: {event.note.id}</p>
-                <p className="text-xs mb-5">Author: {event.note.pubkey}</p>
-
+                <p className="text-xs mb-5">Author: {event.note.pubkey} </p>
+                <p>Name :{profile?.name}</p>
+                <p>Lud16:{profile?.lud16}</p>
+                <p>Lud06:{profile?.lud06}</p>
                 <h3 className="break-words">{event.note.content}</h3>
               </div>
               {/* Button with a thin white outline */}
@@ -548,10 +573,12 @@ export default function Home() {
   return (
     <main className="flex min-h-screen flex-col items-center max-w-5xl mx-auto border-l border-white/20 border-r">
       {renderHeader()}
-      {renderEvents()}
-      {renderPostButton()}
-      {renderForm()}
-      {renderSocials()}
+      <div className="flex flex-col max-w-5xl mt-16">
+        {renderEvents()}
+        {renderPostButton()}
+        {renderForm()}
+        {renderSocials()}
+      </div>
     </main>
   )
 }
